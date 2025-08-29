@@ -1,0 +1,778 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>人员路线分配展示</title>
+    <script src="https://webapi.amap.com/maps?v=1.4.15&key=05274d5027e6b22978b2ade4630f3596"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background-color: #f5f5f5;
+        }
+        
+        .container {
+            display: flex;
+            height: 100vh;
+        }
+        
+        .sidebar {
+            width: 350px;
+            background: white;
+            box-shadow: 2px 0 10px rgba(0,0,0,0.1);
+            display: flex;
+            flex-direction: column;
+            z-index: 1000;
+        }
+        
+        .header {
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        
+        .header h1 {
+            font-size: 20px;
+            margin-bottom: 10px;
+        }
+        
+        .controls {
+            padding: 20px;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .control-group {
+            margin-bottom: 15px;
+        }
+        
+        .control-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+            color: #333;
+        }
+        
+        .control-group select {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            background-color: white;
+        }
+        
+        .control-group select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        .control-group button {
+            transition: all 0.3s ease;
+        }
+        
+        .control-group button:hover {
+            background-color: #f0f0f0 !important;
+            transform: translateY(-1px);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .control-group button:active {
+            transform: translateY(0);
+        }
+        
+        .personnel-info {
+            padding: 20px;
+            flex: 1;
+            overflow-y: auto;
+        }
+        
+        .info-card {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            border-left: 4px solid #667eea;
+        }
+        
+        .info-card h3 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 16px;
+        }
+        
+        .info-item {
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+        
+        .info-item strong {
+            color: #555;
+            display: inline-block;
+            width: 80px;
+        }
+        
+        .route-summary {
+            background: #e8f4f8;
+            padding: 10px;
+            border-radius: 4px;
+            margin-top: 10px;
+        }
+        
+        .route-summary .summary-item {
+            display: inline-block;
+            margin-right: 15px;
+            font-size: 12px;
+            color: #666;
+        }
+        
+        .map-container {
+            flex: 1;
+            position: relative;
+        }
+        
+        #map {
+            width: 100%;
+            height: 100%;
+        }
+        
+        .legend {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            z-index: 1000;
+        }
+        
+        .legend h4 {
+            margin-bottom: 10px;
+            font-size: 14px;
+            color: #333;
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 8px;
+            font-size: 12px;
+        }
+        
+        .legend-color {
+            width: 20px;
+            height: 3px;
+            margin-right: 8px;
+            border-radius: 2px;
+        }
+        
+        .route-within { background-color: #1890ff; }
+        .route-between { background-color: #ff4d4f; }
+        .route-store { background-color: #52c41a; }
+        .coordinate-point { background-color: #ff6b6b; }
+        .all-routes { background-color: #1890ff; }
+        
+        .loading {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 200px;
+            font-size: 16px;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="sidebar">
+            <div class="header">
+                <h1>人员路线分配系统</h1>
+                <p>选择人员和路线查看详细信息</p>
+            </div>
+            
+            <div class="controls">
+                <div class="control-group">
+                    <label for="personnelSelect">选择人员：</label>
+                    <select id="personnelSelect">
+                        <option value="">请选择人员...</option>
+                    </select>
+                </div>
+                
+                <div class="control-group">
+                    <label for="routeSelect">选择路线：</label>
+                    <select id="routeSelect">
+                        <option value="all">显示所有路线</option>
+                    </select>
+                </div>
+                
+                <div class="control-group">
+                    <label>坐标点控制：</label>
+                    <button id="toggleCoordinates" style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; background-color: white; cursor: pointer;">显示坐标点</button>
+                </div>
+                
+                <div class="control-group">
+                    <label>全局视图：</label>
+                    <button id="showAllRoutes" style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; background-color: white; cursor: pointer;">显示所有人员路线</button>
+                </div>
+                
+                <div class="control-group">
+                    <label>人员导航：</label>
+                    <button id="nextPersonnel" style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; background-color: white; cursor: pointer;">查看下一个人</button>
+                </div>
+            </div>
+            
+            <div class="personnel-info">
+                <div id="personnelDetails">
+                    <div class="loading">请选择人员查看详细信息</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="map-container">
+            <div id="map"></div>
+            <div class="legend">
+                <h4>图例</h4>
+                <div class="legend-item">
+                    <div class="legend-color route-within"></div>
+                    <span>路线内连线</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color route-between"></div>
+                    <span>路线间连线</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color route-store"></div>
+                    <span>门店位置</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color coordinate-point"></div>
+                    <span>坐标点</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color all-routes"></div>
+                    <span>所有人员路线</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let map;
+        let personnelData = [];
+        let currentPersonnel = null;
+        let currentPersonnelIndex = -1; // 当前选中人员的索引
+        let routePolylines = [];
+        let routeMarkers = [];
+        let coordinateMarkers = [];
+        let coordinatesVisible = false;
+        let allRoutesVisible = false;
+        
+        // 初始化地图
+        function initMap() {
+            map = new AMap.Map('map', {
+                center: [116.397428, 39.90923],
+                zoom: 6,
+                mapStyle: 'amap://styles/normal'
+            });
+            
+            // 添加地图控件
+            AMap.plugin(['AMap.Scale', 'AMap.ToolBar'], function() {
+                map.addControl(new AMap.Scale());
+                map.addControl(new AMap.ToolBar());
+            });
+        }
+        
+        // 加载人员数据
+        async function loadPersonnelData() {
+            try {
+                const response = await fetch('total_res_deal.json');
+                const data = await response.json();
+                personnelData = data.personnel_route_assignments;
+                populatePersonnelSelect();
+            } catch (error) {
+                console.error('Error loading personnel data:', error);
+                document.getElementById('personnelDetails').innerHTML = 
+                    '<div class="loading">数据加载失败，请检查文件是否存在</div>';
+            }
+        }
+        
+        // 填充人员选择下拉框
+        function populatePersonnelSelect() {
+            const select = document.getElementById('personnelSelect');
+            select.innerHTML = '<option value="">请选择人员...</option>';
+            
+            personnelData.forEach(person => {
+                const option = document.createElement('option');
+                option.value = person.personnel_id;
+                option.textContent = `${person.name} (${person.personnel_id})`;
+                select.appendChild(option);
+            });
+        }
+        
+        // 填充路线选择下拉框
+        function populateRouteSelect(person) {
+            const select = document.getElementById('routeSelect');
+            select.innerHTML = '<option value="all">显示所有路线</option>';
+            
+            if (person && person.assigned_routes) {
+                person.assigned_routes.forEach(route => {
+                    const option = document.createElement('option');
+                    option.value = route.route_id;
+                    option.textContent = `路线 ${route.route_id} (${route.store_count}个门店)`;
+                    select.appendChild(option);
+                });
+            }
+        }
+        
+        // 显示人员详细信息
+        function displayPersonnelInfo(person, selectedRouteId = 'all') {
+            const container = document.getElementById('personnelDetails');
+            
+            if (!person) {
+                container.innerHTML = '<div class="loading">请选择人员查看详细信息</div>';
+                return;
+            }
+            
+            const routeColors = ['#1890ff', '#52c41a', '#fa8c16', '#eb2f96', '#722ed1', '#13c2c2'];
+            
+            const html = `
+                <div class="info-card">
+                    <h3>基本信息</h3>
+                    <div class="info-item"><strong>姓名:</strong> ${person.name}</div>
+                    <div class="info-item"><strong>编号:</strong> ${person.personnel_id}</div>
+                    <div class="info-item"><strong>工作天数:</strong> ${person.work_day}天</div>
+                    <div class="info-item"><strong>效率:</strong> ${person.efficiency}</div>
+                    <div class="info-item"><strong>禁止信息:</strong> ${person.ban_info || '无'}</div>
+                    <div class="info-item"><strong>禁止城市:</strong> ${person.ban_city || '无'}</div>
+                </div>
+                
+                <div class="info-card">
+                    <h3>路线统计</h3>
+                    <div class="route-summary">
+                        <div class="summary-item"><strong>总路线数:</strong> ${person.route_summary.total_routes}</div>
+                        <div class="summary-item"><strong>总门店数:</strong> ${person.route_summary.total_stores}</div>
+                        <div class="summary-item"><strong>总距离:</strong> ${person.route_summary.total_distance_km.toFixed(1)}km</div>
+                        <div class="summary-item"><strong>总时间(门店间移动+到店稽核):</strong> ${person.route_summary.total_time_h.toFixed(1)}h</div>
+                        <div class="summary-item"><strong>总城市数:</strong> ${person.total_cities}</div>
+                        <div class="summary-item"><strong>城市序列:</strong> ${person.city_sequence}</div>
+                    </div>
+                </div>
+                
+                <div class="info-card">
+                    <h3>路线详情</h3>
+                    ${person.assigned_routes.map((route, index) => {
+                        const color = routeColors[index % routeColors.length];
+                        const isSelected = selectedRouteId != 'all' && route.route_id == selectedRouteId;
+                        const backgroundStyle = isSelected ? `background: linear-gradient(135deg, ${color}15, ${color}25);` : 'background: white;';
+                        const borderStyle = isSelected ? `border: 2px solid ${color};` : `border-left: 4px solid ${color};`;
+                        
+                        return `
+                            <div style="margin-bottom: 10px; padding: 8px; ${backgroundStyle} border-radius: 4px; ${borderStyle} position: relative; transition: all 0.3s ease;">
+                                <div style="display: flex; align-items: center; margin-bottom: 4px;">
+                                    <div style="width: 16px; height: 16px; background: ${color}; border-radius: 50%; margin-right: 8px; display: flex; align-items: center; justify-content: center; color: white; font-size: 10px; font-weight: bold;">${index + 1}</div>
+                                    <div style="font-weight: 500; color: ${color};">路线 ${route.route_id}</div>
+                                    ${isSelected ? '<div style="margin-left: auto; color: ' + color + '; font-size: 12px; font-weight: bold;">● 当前选中</div>' : ''}
+                                </div>
+                                <div style="font-size: 12px; color: #666; margin-left: 24px;">
+                                    ${route.store_count}个门店 | ${route.total_distance_km}km | ${route.total_time_h}h
+                                </div>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+            `;
+            
+            container.innerHTML = html;
+        }
+        
+        // 清除地图上的路线和标记
+        function clearMapElements() {
+            routePolylines.forEach(polyline => map.remove(polyline));
+            routeMarkers.forEach(marker => map.remove(marker));
+            routePolylines = [];
+            routeMarkers = [];
+        }
+        
+        // 绘制指定坐标点
+        function drawCoordinatePoints() {
+            // 清除之前的坐标点标记
+            coordinateMarkers.forEach(marker => map.remove(marker));
+            coordinateMarkers = [];
+            
+            const coordinates = [[130.989644, 45.30245], [130.724068, 47.019317], [126.973653, 47.46212], [101.870216, 25.699814], [128.331877, 45.454241], [116.883821, 39.881526], [125.323116, 43.914823], [111.796257, 37.264519], [125.366207, 43.846055], [130.271965, 45.289903], [114.739856, 40.76432], [108.778997, 37.588095], [126.05801, 42.943254], [104.895125, 25.06066], [109.67789, 37.142303], [111.143, 39.384295], [101.690871, 23.431723], [111.345189, 35.611577], [124.782158, 40.725905], [124.287481, 45.507725], [125.272434, 45.708603], [125.29026, 43.845421], [111.552457, 36.076266], [107.747464, 25.249088], [101.324959, 25.716216], [131.859357, 47.288148], [129.470123, 44.34374], [115.094544, 40.605944], [118.516491, 35.266846], [103.780668, 25.498432], [103.810533, 25.473951], [100.250136, 25.590343], [112.824888, 35.495858], [104.264661, 23.352792], [117.965691, 40.197157], [111.80526, 37.147276], [119.137931, 26.146029], [119.297096, 26.124744], [116.845471, 39.870628], [130.386776, 46.813726], [120.322123, 27.307498], [99.913198, 24.591372], [120.179973, 27.235472], [121.661557, 42.045681], [125.872814, 48.035565]];
+            
+            coordinates.forEach((coord, index) => {
+                const marker = new AMap.Marker({
+                    position: coord,
+                    title: `坐标点 ${index + 1}`,
+                    content: `<div style="background: #ff6b6b; color: white; padding: 4px 8px; border-radius: 50%; font-size: 12px; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center;">${index + 1}</div>`
+                });
+                
+                marker.setMap(map);
+                coordinateMarkers.push(marker);
+                
+                // 添加信息窗口
+                const shop_names = ['MW0579', 'MW0288', 'TA0503', 'MW0461', 'MA1105', 'MW0548', 'TW0072', 'MW0563', 'TW0280', 'MW0372', 'MW0250', 'TW0363', 'MW0494', 'MW0468', 'MW0330', 'MW0481', 'MW0233', 'MW0398', 'TW0303', 'MW0343', 'TW0261', 'TW0221', 'MW0420', 'MW0030', 'MW0363', 'MW0444', 'MA0952', 'MQ0023', 'MW0437', 'MW0143', 'MA0911', 'MA1470', 'TA0698', 'MW0357', 'MQ0017', 'MW0429', 'MS603', 'T246', 'MW0325', 'MW0484', 'M617', 'MW0358', 'ME046', 'MW0403', 'MW0296']
+                const infoWindow = new AMap.InfoWindow({
+                    content: `
+                        <div style="padding: 10px;">
+                            <h4 style="margin: 0 0 5px 0; color: #333;">${shop_names[index]}</h4>
+                            <p style="margin: 0; font-size: 12px; color: #666;">
+                                经度: ${coord[0]}<br>
+                                纬度: ${coord[1]}
+                            </p>
+                        </div>
+                    `
+                });
+                
+                marker.on('click', function() {
+                    infoWindow.open(map, marker.getPosition());
+                });
+            });
+            
+            // 调整地图视野以显示所有坐标点
+            if (coordinates.length > 0) {
+                const bounds = new AMap.Bounds();
+                coordinates.forEach(coord => {
+                    bounds.extend(coord);
+                });
+                map.setBounds(bounds, false, [50, 50, 50, 50]);
+            }
+        }
+        
+        // 切换坐标点显示
+        function toggleCoordinates() {
+            const button = document.getElementById('toggleCoordinates');
+            if (coordinatesVisible) {
+                // 隐藏坐标点
+                coordinateMarkers.forEach(marker => map.remove(marker));
+                coordinateMarkers = [];
+                coordinatesVisible = false;
+                button.textContent = '显示坐标点';
+                button.style.backgroundColor = 'white';
+            } else {
+                // 显示坐标点
+                drawCoordinatePoints();
+                coordinatesVisible = true;
+                button.textContent = '隐藏坐标点';
+                button.style.backgroundColor = '#ff6b6b';
+                button.style.color = 'white';
+            }
+        }
+        
+        // 查看下一个人
+        function showNextPersonnel() {
+            if (personnelData.length === 0) {
+                alert('没有人员数据');
+                return;
+            }
+            
+            // 如果当前没有选中人员，从第一个开始
+            if (currentPersonnelIndex === -1) {
+                currentPersonnelIndex = 0;
+            } else {
+                // 移动到下一个人
+                currentPersonnelIndex = (currentPersonnelIndex + 1) % personnelData.length;
+            }
+            
+            // 获取下一个人员
+            const nextPersonnel = personnelData[currentPersonnelIndex];
+            
+            // 更新选择框
+            const personnelSelect = document.getElementById('personnelSelect');
+            personnelSelect.value = nextPersonnel.personnel_id;
+            
+            // 更新当前人员信息
+            currentPersonnel = nextPersonnel;
+            
+            // 更新路线选择框
+            populateRouteSelect(currentPersonnel);
+            
+            // 显示人员信息
+            displayPersonnelInfo(currentPersonnel, 'all');
+            
+            // 显示路线
+            displayRoutes(currentPersonnel);
+            
+            // 更新按钮文本
+            const button = document.getElementById('nextPersonnel');
+            button.textContent = `查看下一个人 (${currentPersonnelIndex + 1}/${personnelData.length})`;
+            
+            // 添加视觉反馈
+            button.style.backgroundColor = '#1890ff';
+            button.style.color = 'white';
+            
+            // 2秒后恢复按钮样式
+            setTimeout(() => {
+                button.style.backgroundColor = 'white';
+                button.style.color = 'black';
+            }, 2000);
+        }
+        
+        // 显示所有人员的所有路线
+        function showAllPersonnelRoutes() {
+            const button = document.getElementById('showAllRoutes');
+            if (allRoutesVisible) {
+                // 隐藏所有路线
+                clearMapElements();
+                allRoutesVisible = false;
+                button.textContent = '显示所有人员路线';
+                button.style.backgroundColor = 'white';
+                button.style.color = 'black';
+                
+                // 恢复当前选中人员的路线显示
+                if (currentPersonnel) {
+                    displayRoutes(currentPersonnel, document.getElementById('routeSelect').value);
+                }
+            } else {
+                // 显示所有人员的所有路线
+                clearMapElements();
+                allRoutesVisible = true;
+                button.textContent = '隐藏所有路线';
+                button.style.backgroundColor = '#1890ff';
+                button.style.color = 'white';
+                
+                let allStores = [];
+                const routeColors = ['#1890ff', '#52c41a', '#fa8c16', '#eb2f96', '#722ed1', '#13c2c2', '#f5222d', '#fa541c', '#fa8c16', '#fadb14'];
+                
+                personnelData.forEach((person, personIndex) => {
+                    if (!person.assigned_routes) return;
+                    
+                    person.assigned_routes.forEach((route, routeIndex) => {
+                        if (!route.stores || route.stores.length === 0) return;
+                        
+                        const color = routeColors[(personIndex + routeIndex) % routeColors.length];
+                        
+                        // 添加门店标记
+                        route.stores.forEach((store, storeIndex) => {
+                            const marker = new AMap.Marker({
+                                position: [store.lon, store.lat],
+                                title: `${person.name} - ${store.name}`,
+                                content: `<div style="background: ${color}; color: white; padding: 4px 8px; border-radius: 4px; font-size: 10px;">${person.name.substring(0, 1)}${storeIndex + 1}</div>`
+                            });
+                            
+                            marker.setMap(map);
+                            routeMarkers.push(marker);
+                            
+                            // 添加信息窗口
+                            const infoWindow = new AMap.InfoWindow({
+                                content: `
+                                    <div style="padding: 10px;">
+                                        <h4 style="margin: 0 0 5px 0; color: #333;">${store.name}</h4>
+                                        <p style="margin: 0; font-size: 12px; color: #666;">
+                                            人员: ${person.name} (${person.personnel_id})<br>
+                                            路线: ${route.route_id} - 第 ${storeIndex + 1} 站<br>
+                                            经度: ${store.lon}<br>
+                                            纬度: ${store.lat}
+                                        </p>
+                                    </div>
+                                `
+                            });
+                            
+                            marker.on('click', function() {
+                                infoWindow.open(map, marker.getPosition());
+                            });
+                        });
+                        
+                        // 绘制路线内连线
+                        if (route.stores.length > 1) {
+                            const path = route.stores.map(store => [store.lon, store.lat]);
+                            const polyline = new AMap.Polyline({
+                                path: path,
+                                strokeColor: color,
+                                strokeWeight: 2,
+                                strokeOpacity: 0.6,
+                                strokeStyle: 'solid'
+                            });
+                            
+                            polyline.setMap(map);
+                            routePolylines.push(polyline);
+                        }
+                        
+                        allStores.push(...route.stores);
+                    });
+                });
+                
+                // 调整地图视野以显示所有路线
+                if (allStores.length > 0) {
+                    const bounds = new AMap.Bounds();
+                    allStores.forEach(store => {
+                        bounds.extend([store.lon, store.lat]);
+                    });
+                    
+                    const padding = [50, 50, 50, 50];
+                    map.setBounds(bounds, false, padding);
+                }
+            }
+        }
+        
+        // 在地图上显示路线
+        function displayRoutes(person, selectedRouteId = 'all') {
+            // 如果正在显示所有路线，则不执行单个人员的路线显示
+            if (allRoutesVisible) return;
+            
+            clearMapElements();
+            
+            if (!person || !person.assigned_routes) return;
+            
+            const routesToShow = selectedRouteId === 'all' 
+                ? person.assigned_routes 
+                : person.assigned_routes.filter(route => route.route_id == selectedRouteId);
+            
+            let allStores = [];
+            const routeColors = ['#1890ff', '#52c41a', '#fa8c16', '#eb2f96', '#722ed1', '#13c2c2'];
+            
+            routesToShow.forEach((route, routeIndex) => {
+                if (!route.stores || route.stores.length === 0) return;
+                
+                const color = routeColors[routeIndex % routeColors.length];
+                
+                // 添加门店标记
+                route.stores.forEach((store, storeIndex) => {
+                    const marker = new AMap.Marker({
+                        position: [store.lon, store.lat],
+                        title: store.name,
+                        content: `<div style="background: ${color}; color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px;">${storeIndex + 1}</div>`
+                    });
+                    
+                    marker.setMap(map);
+                    routeMarkers.push(marker);
+                    
+                    // 添加信息窗口
+                    const infoWindow = new AMap.InfoWindow({
+                        content: `
+                            <div style="padding: 10px;">
+                                <h4 style="margin: 0 0 5px 0; color: #333;">${store.name}</h4>
+                                <p style="margin: 0; font-size: 12px; color: #666;">
+                                    路线 ${route.route_id} - 第 ${storeIndex + 1} 站<br>
+                                    经度: ${store.lon}<br>
+                                    纬度: ${store.lat}
+                                </p>
+                            </div>
+                        `
+                    });
+                    
+                    marker.on('click', function() {
+                        infoWindow.open(map, marker.getPosition());
+                    });
+                });
+                
+                // 绘制路线内连线
+                if (route.stores.length > 1) {
+                    const path = route.stores.map(store => [store.lon, store.lat]);
+                    const polyline = new AMap.Polyline({
+                        path: path,
+                        strokeColor: color,
+                        strokeWeight: 3,
+                        strokeOpacity: 0.8,
+                        strokeStyle: 'solid'
+                    });
+                    
+                    polyline.setMap(map);
+                    routePolylines.push(polyline);
+                }
+                
+                allStores.push(...route.stores);
+            });
+            
+            // 绘制路线间连线（如果显示所有路线）
+            if (selectedRouteId === 'all' && routesToShow.length > 1) {
+                for (let i = 0; i < routesToShow.length - 1; i++) {
+                    const currentRoute = routesToShow[i];
+                    const nextRoute = routesToShow[i + 1];
+                    
+                    if (currentRoute.stores.length > 0 && nextRoute.stores.length > 0) {
+                        const lastStore = currentRoute.stores[currentRoute.stores.length - 1];
+                        const firstStore = nextRoute.stores[0];
+                        
+                        const polyline = new AMap.Polyline({
+                            path: [[lastStore.lon, lastStore.lat], [firstStore.lon, firstStore.lat]],
+                            strokeColor: '#ff4d4f',
+                            strokeWeight: 2,
+                            strokeOpacity: 0.6,
+                            strokeStyle: 'dashed'
+                        });
+                        
+                        polyline.setMap(map);
+                        routePolylines.push(polyline);
+                    }
+                }
+            }
+            
+            // 调整地图视野到人员路线中心
+            if (allStores.length > 0) {
+                const bounds = new AMap.Bounds();
+                allStores.forEach(store => {
+                    bounds.extend([store.lon, store.lat]);
+                });
+                
+                // 设置合适的边距，确保路线完全可见
+                const padding = [50, 50, 50, 50]; // 上、右、下、左的边距
+                map.setBounds(bounds, false, padding);
+                
+                // 如果只有一个门店，设置合适的缩放级别
+                if (allStores.length === 1) {
+                    map.setZoomAndCenter(12, [allStores[0].lon, allStores[0].lat]);
+                }
+            }
+        }
+        
+        // 事件监听
+        document.getElementById('personnelSelect').addEventListener('change', function() {
+            const personnelId = this.value;
+            
+            if (personnelId) {
+                currentPersonnel = personnelData.find(p => p.personnel_id === personnelId);
+                // 更新当前人员索引
+                currentPersonnelIndex = personnelData.findIndex(p => p.personnel_id === personnelId);
+                populateRouteSelect(currentPersonnel);
+                displayPersonnelInfo(currentPersonnel, 'all');
+                displayRoutes(currentPersonnel);
+                
+                // 更新按钮文本
+                const button = document.getElementById('nextPersonnel');
+                button.textContent = `查看下一个人 (${currentPersonnelIndex + 1}/${personnelData.length})`;
+            } else {
+                currentPersonnel = null;
+                currentPersonnelIndex = -1;
+                populateRouteSelect(null);
+                displayPersonnelInfo(null);
+                clearMapElements();
+                
+                // 重置按钮文本
+                const button = document.getElementById('nextPersonnel');
+                button.textContent = '查看下一个人';
+            }
+        });
+        
+        document.getElementById('routeSelect').addEventListener('change', function() {
+            const routeId = this.value;
+            if (currentPersonnel) {
+                displayPersonnelInfo(currentPersonnel, routeId);
+                displayRoutes(currentPersonnel, routeId);
+            }
+        });
+        
+        // 页面加载完成后初始化
+        window.onload = function() {
+            initMap();
+            loadPersonnelData();
+            
+            // 添加坐标点按钮事件监听器
+            document.getElementById('toggleCoordinates').addEventListener('click', toggleCoordinates);
+            
+            // 添加显示所有路线按钮事件监听器
+            document.getElementById('showAllRoutes').addEventListener('click', showAllPersonnelRoutes);
+            
+            // 添加查看下一个人按钮事件监听器
+            document.getElementById('nextPersonnel').addEventListener('click', showNextPersonnel);
+        };
+    </script>
+</body>
+</html> 
